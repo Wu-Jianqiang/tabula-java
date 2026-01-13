@@ -152,13 +152,21 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
         Line2D.Float line;
         PointComparator pointComparator = new PointComparator();
 
+        // next() moves the iterator to the next segment after processing the current one,
+        // without affecting the current segment processing.
+        // next() 在处理完当前段后调用：移动指针到下一个段，不会影响当前段的处理。
+        pathIterator.next();
+
+        // If there are no more segments after calling next(),
+        // isDone() will return true in the next iteration, exiting the loop.
+        // 如果 next() 被调用后没有更多段，下次循环时 isDone() 会返回 true，退出循环。
         while (!pathIterator.isDone()) {
-            pathIterator.next();
             // This can be the last segment, when pathIterator.isDone, but we need to
             // process it otherwise us-017.pdf fails the last value.
             try {
                 currentSegment = pathIterator.currentSegment(coordinates);
             } catch (IndexOutOfBoundsException ex) {
+                pathIterator.next();
                 continue;
             }
             switch (currentSegment) {
@@ -187,6 +195,7 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
                     break;
             }
             startPoint = endPoint;
+            pathIterator.next();
         }
         currentPath.reset();
     }
