@@ -1,10 +1,6 @@
 package technology.tabula.debug;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.Shape;
-import java.awt.Stroke;
+import java.awt.*;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
@@ -14,8 +10,20 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import javax.imageio.ImageIO;
 
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.rendering.ImageType;
+
 import technology.tabula.Cell;
 import technology.tabula.CommandLineApp;
 import technology.tabula.Line;
@@ -31,25 +39,24 @@ import technology.tabula.Utils;
 import technology.tabula.detectors.NurminenDetectionAlgorithm;
 import technology.tabula.extractors.BasicExtractionAlgorithm;
 import technology.tabula.extractors.SpreadsheetExtractionAlgorithm;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.rendering.ImageType;
-
-import javax.imageio.ImageIO;
 
 public class Debug {
 
     private static final float CIRCLE_RADIUS = 5f;
+    private static final int   DEFAULT_SCALE = 4;
+    private static final int   DEFAULT_DPI   = DEFAULT_SCALE * 72;
 
-    private static final Color[] COLORS = {new Color(27, 158, 119), new Color(217, 95, 2), new Color(117, 112, 179),
-            new Color(231, 41, 138), new Color(102, 166, 30)};
+    private static final Color[] COLORS = { new Color(27, 158, 119), new Color(217, 95, 2),
+                                            new Color(117, 112, 179), new Color(231, 41, 138),
+                                            new Color(102, 166, 30) };
 
     public static void debugIntersections(Graphics2D g, Page page) {
         int i = 0;
-        for (Point2D p : Ruling.findIntersections(page.getHorizontalRulings(), page.getVerticalRulings()).keySet()) {
+        for (Point2D p : Ruling.findIntersections(page.getHorizontalRulings(),
+                page.getVerticalRulings()).keySet()) {
             g.setColor(COLORS[(i++) % 5]);
-            g.fill(new Ellipse2D.Float((float) p.getX() - CIRCLE_RADIUS / 2f, (float) p.getY() - CIRCLE_RADIUS / 2f, 5f,
-                    5f));
+            g.fill(new Ellipse2D.Float((float) p.getX() * DEFAULT_SCALE - CIRCLE_RADIUS / 2f,
+                    (float) p.getY() * DEFAULT_SCALE - CIRCLE_RADIUS / 2f, 5f, 5f));
         }
     }
 
@@ -109,7 +116,8 @@ public class Debug {
         drawShapes(g, tables);
     }
 
-    private static void drawShapes(Graphics2D g, Collection<? extends Shape> shapes, Stroke stroke) {
+    private static void drawShapes(Graphics2D g, Collection<? extends Shape> shapes,
+                                   Stroke stroke) {
         int i = 0;
         g.setStroke(stroke);
         for (Shape s : shapes) {
@@ -135,8 +143,8 @@ public class Debug {
         // ProjectionProfile profile = new ProjectionProfile(page,
         // page.getText(), horizSmoothKernel, vertSmoothKernel);
         ProjectionProfile profile = new ProjectionProfile(page,
-                TextElement.mergeWords(page.getText(), page.getVerticalRulings()), horizSmoothKernel * 1.5f,
-                vertSmoothKernel);
+                TextElement.mergeWords(page.getText(), page.getVerticalRulings()),
+                horizSmoothKernel * 1.5f, vertSmoothKernel);
         float prec = (float) Math.pow(10, ProjectionProfile.DECIMAL_PLACES);
 
         float[] hproj = profile.getHorizontalProjection();
@@ -148,20 +156,23 @@ public class Debug {
         // hproj
         // Point2D last = new Point2D.Double(page.getLeft(), page.getBottom() -
         // hproj[0] / prec), cur;
-        Point2D last = new Point2D.Double(page.getLeft(), page.getBottom()), cur;
+        Point2D last = new Point2D.Double(page.getLeft() * DEFAULT_SCALE,
+                page.getBottom() * DEFAULT_SCALE), cur;
         for (int i = 0; i < hproj.length; i++) {
-            cur = new Point2D.Double(page.getLeft() + i / prec, page.getBottom() - hproj[i]);
+            cur = new Point2D.Double((page.getLeft() + i / prec) * DEFAULT_SCALE,
+                    (page.getBottom() - hproj[i]) * DEFAULT_SCALE);
             g.draw(new Line2D.Double(last, cur));
             last = cur;
         }
 
         // hproj first derivative
         g.setColor(Color.BLUE);
-        float[] deriv = ProjectionProfile.filter(ProjectionProfile.getFirstDeriv(profile.getHorizontalProjection()),
-                0.01f);
-        last = new Point2D.Double(page.getLeft(), page.getBottom());
+        float[] deriv = ProjectionProfile.filter(
+                ProjectionProfile.getFirstDeriv(profile.getHorizontalProjection()), 0.01f);
+        last = new Point2D.Double(page.getLeft() * DEFAULT_SCALE, page.getBottom() * DEFAULT_SCALE);
         for (int i = 0; i < deriv.length; i++) {
-            cur = new Point2D.Double(page.getLeft() + i / prec, page.getBottom() - deriv[i]);
+            cur = new Point2D.Double((page.getLeft() + i / prec) * DEFAULT_SCALE,
+                    (page.getBottom() - deriv[i]) * DEFAULT_SCALE);
             g.draw(new Line2D.Double(last, cur));
             last = cur;
         }
@@ -172,15 +183,17 @@ public class Debug {
         float[] seps = profile.findVerticalSeparators(horizSmoothKernel * 2.5f);
         for (int i = 0; i < seps.length; i++) {
             float x = page.getLeft() + seps[i];
-            g.draw(new Line2D.Double(x, page.getTop(), x, page.getBottom()));
+            g.draw(new Line2D.Double(x * DEFAULT_SCALE, page.getTop() * DEFAULT_SCALE,
+                    x * DEFAULT_SCALE, page.getBottom() * DEFAULT_SCALE));
         }
 
         // vproj
         g.setStroke(new BasicStroke(1f));
         g.setColor(Color.GREEN);
-        last = new Point2D.Double(page.getLeft(), page.getTop());
+        last = new Point2D.Double(page.getLeft() * DEFAULT_SCALE, page.getTop() * DEFAULT_SCALE);
         for (int i = 0; i < vproj.length; i++) {
-            cur = new Point2D.Double(page.getLeft() + vproj[i] / prec, page.getTop() + i / prec);
+            cur = new Point2D.Double((page.getLeft() + vproj[i] / prec) * DEFAULT_SCALE,
+                    (page.getTop() + i / prec) * DEFAULT_SCALE);
             g.draw(new Line2D.Double(last, cur));
             last = cur;
         }
@@ -188,9 +201,10 @@ public class Debug {
         // vproj first derivative
         g.setColor(new Color(0, 0, 1, 0.5f));
         deriv = ProjectionProfile.filter(ProjectionProfile.getFirstDeriv(vproj), 0.1f);
-        last = new Point2D.Double(page.getRight(), page.getTop());
+        last = new Point2D.Double(page.getRight() * DEFAULT_SCALE, page.getTop() * DEFAULT_SCALE);
         for (int i = 0; i < deriv.length; i++) {
-            cur = new Point2D.Double(page.getRight() - deriv[i] * 10, page.getTop() + i / prec);
+            cur = new Point2D.Double((page.getRight() - deriv[i] * 10) * DEFAULT_SCALE,
+                    (page.getTop() + i / prec) * DEFAULT_SCALE);
             g.draw(new Line2D.Double(last, cur));
             last = cur;
         }
@@ -200,22 +214,30 @@ public class Debug {
         seps = profile.findHorizontalSeparators(vertSmoothKernel);
         for (int i = 0; i < seps.length; i++) {
             float y = page.getTop() + seps[i];
-            g.draw(new Line2D.Double(page.getLeft(), y, page.getRight(), y));
+            g.draw(new Line2D.Double(page.getLeft() * DEFAULT_SCALE, y * DEFAULT_SCALE,
+                    page.getRight() * DEFAULT_SCALE, y * DEFAULT_SCALE));
         }
 
     }
 
     private static void drawShape(Graphics2D g, Shape shape) {
         //g.setStroke(new BasicStroke(1));
-        g.draw(shape);
+        java.awt.Rectangle bounds = shape.getBounds();
+        bounds.x *= DEFAULT_SCALE;
+        bounds.y *= DEFAULT_SCALE;
+        bounds.width *= DEFAULT_SCALE;
+        bounds.height *= DEFAULT_SCALE;
+        g.draw(bounds);
     }
 
     public static void renderPage(String pdfPath, String outPath, int pageNumber, Rectangle area,
-                                  boolean drawTextChunks, boolean drawSpreadsheets, boolean drawRulings, boolean drawIntersections,
-                                  boolean drawColumns, boolean drawCharacters, boolean drawArea, boolean drawCells,
-                                  boolean drawUnprocessedRulings, boolean drawProjectionProfile, boolean drawClippingPaths,
+                                  boolean drawTextChunks, boolean drawSpreadsheets,
+                                  boolean drawRulings, boolean drawIntersections,
+                                  boolean drawColumns, boolean drawCharacters, boolean drawArea,
+                                  boolean drawCells, boolean drawUnprocessedRulings,
+                                  boolean drawProjectionProfile, boolean drawClippingPaths,
                                   boolean drawDetectedTables) throws IOException {
-        PDDocument document = PDDocument.load(new File(pdfPath));
+        PDDocument document = Loader.loadPDF(new File(pdfPath));
 
         ObjectExtractor oe = new ObjectExtractor(document);
 
@@ -227,7 +249,7 @@ public class Debug {
 
         PDPage p = document.getPage(pageNumber);
 
-        BufferedImage image = Utils.pageConvertToImage(document, p, 72, ImageType.RGB);
+        BufferedImage image = Utils.pageConvertToImage(document, p, DEFAULT_DPI, ImageType.RGB);
 
         Graphics2D g = (Graphics2D) image.getGraphics();
 
@@ -249,7 +271,7 @@ public class Debug {
         if (drawCharacters) {
             debugCharacters(g, page);
         }
-        if (drawArea) {
+        if (drawArea && area != null) {
             g.setColor(Color.ORANGE);
             drawShape(g, area);
         }
@@ -293,17 +315,13 @@ public class Debug {
         o.addOption("n", "clipping-paths", false, "Show clipping paths");
         o.addOption("d", "detected-tables", false, "Show detected tables");
 
-        o.addOption(Option.builder("a").longOpt("area")
-                .desc("Portion of the page to analyze (top,left,bottom,right). Example: --area 269.875,12.75,790.5,561. Default is entire page")
-                .hasArg()
-                .argName("AREA")
-                .build());
+        o.addOption(Option.builder("a").longOpt("area").desc(
+                        "Portion of the page to analyze (top,left,bottom,right). Example: --area 269.875,12.75,790.5,561. Default is entire page")
+                .hasArg().argName("AREA").build());
 
-        o.addOption(Option.builder("p").longOpt("pages")
-                .desc("Comma separated list of ranges, or all. Examples: --pages 1-3,5-7, --pages 3 or --pages all. Default is --pages 1")
-                .hasArg()
-                .argName("PAGES")
-                .build());
+        o.addOption(Option.builder("p").longOpt("pages").desc(
+                        "Comma separated list of ranges, or all. Examples: --pages 1-3,5-7, --pages 3 or --pages all. Default is --pages 1")
+                .hasArg().argName("PAGES").build());
 
         return o;
     }
@@ -349,7 +367,7 @@ public class Debug {
 
             if (pages == null) {
                 // user specified all pages
-                PDDocument document = PDDocument.load(pdfFile);
+                PDDocument document = Loader.loadPDF(pdfFile);
 
                 int numPages = document.getNumberOfPages();
                 pages = new ArrayList<>(numPages);
@@ -362,12 +380,12 @@ public class Debug {
             }
 
             for (int i : pages) {
-                renderPage(pdfFile.getAbsolutePath(),
-                        new File(pdfFile.getParent(), removeExtension(pdfFile.getName()) + "-" + (i) + ".jpg")
-                                .getAbsolutePath(),
-                        i - 1, area, line.hasOption('t'), line.hasOption('s'), line.hasOption('r'), line.hasOption('i'),
-                        line.hasOption('c'), line.hasOption('e'), line.hasOption('g'), line.hasOption('l'),
-                        line.hasOption('u'), line.hasOption('f'), line.hasOption('n'), line.hasOption('d'));
+                renderPage(pdfFile.getAbsolutePath(), new File(pdfFile.getParent(),
+                                removeExtension(pdfFile.getName()) + "-" + (i) + ".jpg").getAbsolutePath(),
+                        i - 1, area, line.hasOption('t'), line.hasOption('s'), line.hasOption('r'),
+                        line.hasOption('i'), line.hasOption('c'), line.hasOption('e'),
+                        line.hasOption('g'), line.hasOption('l'), line.hasOption('u'),
+                        line.hasOption('f'), line.hasOption('n'), line.hasOption('d'));
             }
         } catch (ParseException e) {
             System.err.println("Error: " + e.getMessage());
@@ -395,8 +413,9 @@ public class Debug {
 
         // Remove the extension.
         int extensionIndex = filename.lastIndexOf(".");
-        if (extensionIndex == -1)
+        if (extensionIndex == -1) {
             return filename;
+        }
 
         return filename.substring(0, extensionIndex);
     }
