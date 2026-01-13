@@ -5,8 +5,8 @@
     <artifactId>tabula</artifactId>
     <version>1.0.5.1</version>
     <name>Tabula</name>
-    <description>Extract tables from PDF files</description>
-    <url>http://github.com/tabulapdf/tabula-java</url>
+    <description>Extract tables from PDF files (forked from https://github.com/tabulapdf/tabula-java)</description>
+    <url>https://github.com/Wu-Jianqiang/tabula-java</url>
 
     <licenses>
         <license>
