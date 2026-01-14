@@ -48,8 +48,9 @@ public class JSONWriter implements Writer {
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-    private static Gson gson() {
+    public static Gson gson() {
         return new GsonBuilder()
+                .setPrettyPrinting()
                 .addSerializationExclusionStrategy(ALL_CLASSES_SKIPPING_NON_PUBLIC_FIELDS)
                 .registerTypeAdapter(Table.class, TableSerializer.INSTANCE)
                 .registerTypeAdapter(RectangularTextContainer.class, RectangularTextContainerSerializer.INSTANCE)

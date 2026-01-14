@@ -31,8 +31,9 @@ public class Utils {
         return overlap(y1, height1, y2, height2, 0.1f);
     }
 
-    private final static float EPSILON = 0.01f;
-    protected static boolean useQuickSort = useCustomQuickSort();
+    private static final int   MAX_SCALE = 6;
+    private static final float EPSILON   = 0.01f;
+    protected static boolean   useQuickSort  = useCustomQuickSort();
 
     public static boolean feq(double f1, double f2) {
         return (Math.abs(f1 - f2) < EPSILON);
@@ -187,9 +188,26 @@ public class Utils {
         return rv;
     }
 
+    /**
+     * Snap points on lines together so that lines that are close enough to each other will share a coordinate
+     * This helps in detecting intersections and joins between lines that should have been snapped together
+     * by the PDF rendering process but weren't due to floating point precision issues or compression artifacts
+     * <p>
+     * 将线上的点对齐，使彼此足够接近的线共享坐标
+     * 这有助于检测本应在PDF渲染过程中对齐但因浮点精度问题或压缩伪影而未对齐的线之间的交点和连接
+     * </p>
+     *
+     * @param rulings      A list of lines to be processed
+     *                     要处理的线段列表
+     * @param xThreshold   The threshold distance in x direction for snapping points together
+     *                     X方向上对齐点的距离阈值
+     * @param yThreshold   The threshold distance in y direction for snapping points together
+     *                     Y方向上对齐点的距离阈值
+     */
     public static void snapPoints(List<? extends Line2D.Float> rulings, float xThreshold, float yThreshold) {
 
         // collect points and keep a Line -> p1,p2 map
+        // 收集点并将线段映射到其端点
         Map<Line2D.Float, Point2D[]> linesToPoints = new HashMap<>();
         List<Point2D> points = new ArrayList<>();
         for (Line2D.Float r : rulings) {
@@ -201,31 +219,37 @@ public class Utils {
         }
 
         // snap by X
-        Collections.sort(points, new Comparator<Point2D>() {
-            @Override
-            public int compare(Point2D arg0, Point2D arg1) {
-                return java.lang.Double.compare(arg0.getX(), arg1.getX());
-            }
-        });
+        // 按X坐标进行对齐
+        points.sort(Comparator.comparingDouble(Point2D::getX));
 
+        // 创建第一个点组，包含第一个点
+        // Create the first point group containing the first point
         List<List<Point2D>> groupedPoints = new ArrayList<>();
-        groupedPoints.add(new ArrayList<>(Arrays.asList(new Point2D[]{points.get(0)})));
+        groupedPoints.add(new ArrayList<>(Collections.singletonList(points.get(0))));
 
-        for (Point2D p : points.subList(1, points.size() - 1)) {
+        // 遍历剩余的点
+        // Iterate through remaining points
+        for (Point2D p : points.subList(1, points.size())) {
             List<Point2D> last = groupedPoints.get(groupedPoints.size() - 1);
             if (Math.abs(p.getX() - last.get(0).getX()) < xThreshold) {
-                groupedPoints.get(groupedPoints.size() - 1).add(p);
+                // 如果当前点的X坐标与上一组第一个点的X坐标差值小于阈值，则加入上一组
+                // If the X coordinate difference is less than the threshold, add to the previous group
+                last.add(p);
             } else {
-                groupedPoints.add(new ArrayList<>(Arrays.asList(new Point2D[]{p})));
+                // 否则创建新的点组
+                // Otherwise create a new point group
+                groupedPoints.add(new ArrayList<>(Collections.singletonList(p)));
             }
         }
 
+        // 计算每组的平均X坐标并更新所有点的X坐标
+        // Calculate average X coordinate for each group and update all points' X coordinates
         for (List<Point2D> group : groupedPoints) {
-            float avgLoc = 0;
+            double avgLoc = 0;
             for (Point2D p : group) {
                 avgLoc += p.getX();
             }
-            avgLoc /= group.size();
+            avgLoc = round(avgLoc / group.size(), MAX_SCALE);
             for (Point2D p : group) {
                 p.setLocation(avgLoc, p.getY());
             }
@@ -233,31 +257,37 @@ public class Utils {
         // ---
 
         // snap by Y
-        Collections.sort(points, new Comparator<Point2D>() {
-            @Override
-            public int compare(Point2D arg0, Point2D arg1) {
-                return java.lang.Double.compare(arg0.getY(), arg1.getY());
-            }
-        });
+        // 按Y坐标进行对齐
+        points.sort(Comparator.comparingDouble(Point2D::getY));
 
+        // 重新初始化分组
+        // Reinitialize grouping
         groupedPoints = new ArrayList<>();
-        groupedPoints.add(new ArrayList<>(Arrays.asList(new Point2D[]{points.get(0)})));
+        groupedPoints.add(new ArrayList<>(Collections.singletonList(points.get(0))));
 
-        for (Point2D p : points.subList(1, points.size() - 1)) {
+        // 遍历剩余的点
+        // Iterate through remaining points
+        for (Point2D p : points.subList(1, points.size())) {
             List<Point2D> last = groupedPoints.get(groupedPoints.size() - 1);
             if (Math.abs(p.getY() - last.get(0).getY()) < yThreshold) {
-                groupedPoints.get(groupedPoints.size() - 1).add(p);
+                // 如果当前点的Y坐标与上一组第一个点的Y坐标差值小于阈值，则加入上一组
+                // If the Y coordinate difference is less than the threshold, add to the previous group
+                last.add(p);
             } else {
-                groupedPoints.add(new ArrayList<>(Arrays.asList(new Point2D[]{p})));
+                // 否则创建新的点组
+                // Otherwise create a new point group
+                groupedPoints.add(new ArrayList<>(Collections.singletonList(p)));
             }
         }
 
+        // 计算每组的平均Y坐标并更新所有点的Y坐标
+        // Calculate average Y coordinate for each group and update all points' Y coordinates
         for (List<Point2D> group : groupedPoints) {
-            float avgLoc = 0;
+            double avgLoc = 0;
             for (Point2D p : group) {
                 avgLoc += p.getY();
             }
-            avgLoc /= group.size();
+            avgLoc = round(avgLoc / group.size(), MAX_SCALE);
             for (Point2D p : group) {
                 p.setLocation(p.getX(), avgLoc);
             }
@@ -265,24 +295,25 @@ public class Utils {
         // ---
 
         // finally, modify lines
+        // 最后，修改线段
         for (Map.Entry<Line2D.Float, Point2D[]> ltp : linesToPoints.entrySet()) {
             Point2D[] p = ltp.getValue();
             ltp.getKey().setLine(p[0], p[1]);
         }
     }
 
-	public static BufferedImage pageConvertToImage(PDPage page, int dpi, ImageType imageType) throws IOException {
+    public static BufferedImage pageConvertToImage(PDPage page, int dpi, ImageType imageType) throws IOException {
 		try (PDDocument document = new PDDocument()) {
 			document.addPage(page);
 			PDFRenderer renderer = new PDFRenderer(document);
-			document.close();
 			return renderer.renderImageWithDPI(0, dpi, imageType);
 		}
 	}
 
-  public static BufferedImage pageConvertToImage(PDDocument doc, PDPage page, int dpi, ImageType imageType) throws IOException {
-    PDFRenderer renderer = new PDFRenderer(doc);
-    return renderer.renderImageWithDPI(doc.getPages().indexOf(page), dpi, imageType);
-  }
+    public static BufferedImage pageConvertToImage(PDDocument doc, PDPage page, int dpi, ImageType imageType)
+            throws IOException {
+        PDFRenderer renderer = new PDFRenderer(doc);
+        return renderer.renderImageWithDPI(doc.getPages().indexOf(page), dpi, imageType);
+    }
 
 }
