@@ -19,7 +19,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.ImageType;
@@ -237,7 +236,7 @@ public class Debug {
                                   boolean drawCells, boolean drawUnprocessedRulings,
                                   boolean drawProjectionProfile, boolean drawClippingPaths,
                                   boolean drawDetectedTables) throws IOException {
-        PDDocument document = Loader.loadPDF(new File(pdfPath));
+        PDDocument document = PDDocument.load(new File(pdfPath));
 
         ObjectExtractor oe = new ObjectExtractor(document);
 
@@ -367,7 +366,7 @@ public class Debug {
 
             if (pages == null) {
                 // user specified all pages
-                PDDocument document = Loader.loadPDF(pdfFile);
+                PDDocument document = PDDocument.load(pdfFile);
 
                 int numPages = document.getNumberOfPages();
                 pages = new ArrayList<>(numPages);
