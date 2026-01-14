@@ -3,7 +3,7 @@
     <!-- Original groupId: technology.tabula -->
     <groupId>io.github.wu-jianqiang</groupId>
     <artifactId>tabula</artifactId>
-    <version>1.0.5.1</version>
+    <version>1.0.5.2</version>
     <name>Tabula</name>
     <description>Extract tables from PDF files (forked from https://github.com/tabulapdf/tabula-java)</description>
     <url>https://github.com/Wu-Jianqiang/tabula-java</url>
