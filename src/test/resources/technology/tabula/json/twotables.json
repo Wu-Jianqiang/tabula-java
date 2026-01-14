@@ -1,7 +1,7 @@
 [
   {
     "extraction_method": "lattice",
-    "page_number":1,
+    "page_number": 1,
     "top": 111.79043,
     "left": 67.41163,
     "width": 342.44403076171875,
@@ -497,6 +497,7 @@
   },
   {
     "extraction_method": "lattice",
+    "page_number": 1,
     "top": 312.25253,
     "left": 67.41163,
     "width": 445.1776123046875,
