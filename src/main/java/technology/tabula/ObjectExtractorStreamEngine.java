@@ -97,12 +97,12 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
 
     @Override
     public void fillAndStrokePath(int arg0) {
-        strokeOrFillPath(true);
+        strokeOrFillPath(true, true);
     }
 
     @Override
     public void fillPath(int arg0) {
-        strokeOrFillPath(true);
+        strokeOrFillPath(false, true);
     }
 
     @Override
@@ -126,16 +126,16 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
     @Override
     public void strokePath()  {
-        strokeOrFillPath(false);
+        strokeOrFillPath(true, false);
     }
 
-    private void strokeOrFillPath(boolean isFill) {
+    private void strokeOrFillPath(boolean isStroke, boolean isFill) {
         if (!extractRulingLines) {
             currentPath.reset();
             return;
         }
 
-        boolean didNotPassedTheFilter = filterPathBySegmentType();
+        boolean didNotPassedTheFilter = filterPathBySegmentType(isStroke, isFill);
         if (didNotPassedTheFilter) return;
 
         // TODO: how to implement color filter?
@@ -200,23 +200,58 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
         currentPath.reset();
     }
 
-    private boolean filterPathBySegmentType() {
+    /**
+     * Filter path drawing operations, only allowing operations related to line drawing
+     * 过滤路径划线动作，只允许与直线绘制相关的动作
+     * <p>
+     * ⚠️Note: In practice (e.g., unit tests), there exist tables that are filled without stroking operations,
+     * so both operations need to be considered together by default.
+     * ⚠️注意：事实（如单元测试）存在只填充无描边动作的表格存在，因此默认两者都需要一起统计。
+     * </p>
+     *
+     * @param isStroke Whether this is a stroke operation
+     *                 是否为描边操作
+     * @param isFill   Whether this is a fill operation
+     *                 是否为填充操作
+     * @return Return true if the path doesn't meet filtering criteria, otherwise return false
+     *         如果路径不满足过滤条件则返回true，否则返回false
+     */
+    private boolean filterPathBySegmentType(boolean isStroke, boolean isFill) {
         PathIterator pathIterator = currentPath.getPathIterator(pageTransform);
         float[] coordinates = new float[6];
         int currentSegmentType = pathIterator.currentSegment(coordinates);
+
+        // Check if the first drawing operation is a move-to command
+        // 检查第一个划线动作是否为移动到某点命令
         if (currentSegmentType != SEG_MOVETO) {
             currentPath.reset();
             return true;
         }
+
         pathIterator.next();
+
+        // Iterate through remaining drawing operations, check if they are all allowed line types
+        // 遍历剩余的划线动作，检查是否都是允许的动作类型
         while (!pathIterator.isDone()) {
             currentSegmentType = pathIterator.currentSegment(coordinates);
-            if (currentSegmentType != SEG_LINETO && currentSegmentType != SEG_CLOSE && currentSegmentType != SEG_MOVETO) {
+
+            // Only allow drawing operations related to line drawing: line-to, close and move-to
+            // 只允许直线绘制相关的划线动作：划到某点、闭合到移动点和移动到某点
+            if (currentSegmentType != SEG_LINETO && currentSegmentType != SEG_CLOSE &&
+                currentSegmentType != SEG_MOVETO) {
+
+                // Does not meet requirements, return true to indicate filtering out this path
+                // 不符合要求，返回true表示过滤掉此路径
                 currentPath.reset();
                 return true;
+
             }
+
             pathIterator.next();
         }
+
+        // Meets requirements, return false to indicate keeping this path
+        // 符合要求，返回false表示保留此路径
         return false;
     }
 
