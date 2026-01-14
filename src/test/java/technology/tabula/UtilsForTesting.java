@@ -45,9 +45,9 @@ public class UtilsForTesting {
                 maxColCount = row.size();
             }
         }
-        
+
         Assert.assertEquals(maxColCount, table.getColCount());
-        
+
         String[][] rv = new String[tableRows.size()][maxColCount];
 
         for (int i = 0; i < tableRows.size(); i++) {
@@ -61,11 +61,14 @@ public class UtilsForTesting {
     }
 
     public static String loadJson(String path) throws IOException {
- 
+
 	    	StringBuilder stringBuilder = new StringBuilder();
 	    try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(path), "UTF-8"))) {
 	        String line = null;
 	        while ((line = reader.readLine()) != null) {
+                if (stringBuilder.length() > 0){
+                    stringBuilder.append('\n');
+                }
 	            stringBuilder.append(line);
 	        }
 	    }
