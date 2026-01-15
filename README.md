@@ -1,6 +1,34 @@
 tabula-java [![Build Status](https://travis-ci.org/tabulapdf/tabula-java.svg?branch=master)](https://travis-ci.org/tabulapdf/tabula-java)
 ===========
 
+## Branch Description
+
+This is a maintenance branch of `tabula-java`. Since the original project has not been updated for a long time, and we encountered some bugs that must be fixed in practical work, we created this branch and made it publicly available. The main updates are as follows:
+
+1. The branch project continues to maintain JDK 8 compatibility, and the latest version can be obtained from [Maven Central Repository](https://central.sonatype.com/artifact/io.github.wu-jianqiang/tabula/versions);
+2. Fixed two logical bugs in table line segment generation, solving the problem of residual segments and alignment;
+
+**Important Statement:**
+- This branch is developed based on the original `tabula-java` project and follows the same MIT license
+- Thanks to the original author Manuel Aristarán for his contribution
+- If you have feature enhancements or bug fixes, feel free to submit PRs, we will consider merging them into the main branch
+- When using this branch, please pay attention to the differences with the original project and choose the appropriate version according to your needs
+
+## 分支说明
+
+此为 `tabula-java` 的一个维护性分支。由于原项目长期未更新，而在实际工作中遇到了必须修复的 bug，因此创建了这个分支并将其公开分享。主要更新点如下：
+
+1. 分支项目继续保留 JDK 8 版本兼容性，可在 [Maven Central Repository](https://central.sonatype.com/artifact/io.github.wu-jianqiang/tabula/versions) 获取最新版本；
+2. 修复了两处表格线段生成的逻辑 bug，解决了残留线段和对齐问题；
+
+**重要声明：**
+- 此分支基于原始 `tabula-java` 项目进行开发，遵循相同的 MIT 许可证
+- 感谢原作者 Manuel Aristarán 的贡献
+- 如有功能增强或 bug 修复，欢迎提交 PR，我们会考虑合并到主分支
+- 使用此分支时，请注意与原始项目的差异，并根据需要选择合适的版本
+
+===========
+
 `tabula-java` is a library for extracting tables from PDF files — it is the table extraction engine that powers [Tabula](http://tabula.technology/) ([repo](http://github.com/tabulapdf/tabula)). You can use `tabula-java` as a command-line tool to programmatically extract tables from PDFs.
 
 © 2014-2020 Manuel Aristarán. Available under MIT License. See [`LICENSE`](LICENSE).
