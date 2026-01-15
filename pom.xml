@@ -50,8 +50,8 @@
     <scm>
         <connection>scm:git:git@github.com:Wu-Jianqiang/tabula-java.git</connection>
         <developerConnection>scm:git:git@github.com:Wu-Jianqiang/tabula-java.git</developerConnection>
-        <url>git@github.com:Wu-Jianqiang/tabula-java.git</url>
-        <tag>v1.0.2</tag>
+        <url>https://github.com/Wu-Jianqiang/tabula-java</url>
+        <tag>HEAD</tag>
     </scm>
 
     <properties>
