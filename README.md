@@ -7,6 +7,7 @@ This is a maintenance branch of `tabula-java`. Since the original project has no
 
 1. The branch project continues to maintain JDK 8 compatibility, and the latest version can be obtained from [Maven Central Repository](https://central.sonatype.com/artifact/io.github.wu-jianqiang/tabula/versions);
 2. Fixed two logical bugs in table line segment generation, solving the problem of residual segments and alignment;
+3. Enhanced debug image generation functionality with zoom scale, defaulting to 4x magnification, significantly improving the clarity and accuracy of visualized debug output.
 
 **Important Statement:**
 - This branch is developed based on the original `tabula-java` project and follows the same MIT license
@@ -20,6 +21,7 @@ This is a maintenance branch of `tabula-java`. Since the original project has no
 
 1. 分支项目继续保留 JDK 8 版本兼容性，可在 [Maven Central Repository](https://central.sonatype.com/artifact/io.github.wu-jianqiang/tabula/versions) 获取最新版本；
 2. 修复了两处表格线段生成的逻辑 bug，解决了残留线段和对齐问题；
+3. 调试图像生成功能增加缩放比例，默认放大 4 倍，显著提高了可视化调试输出的清晰度和准确性。
 
 **重要声明：**
 - 此分支基于原始 `tabula-java` 项目进行开发，遵循相同的 MIT 许可证
