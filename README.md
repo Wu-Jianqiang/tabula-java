@@ -1,6 +1,3 @@
-tabula-java [![Build Status](https://travis-ci.org/tabulapdf/tabula-java.svg?branch=master)](https://travis-ci.org/tabulapdf/tabula-java)
-===========
-
 ## Branch Description
 
 This is a maintenance branch of `tabula-java`. Since the original project has not been updated for a long time, and we encountered some bugs that must be fixed in practical work, we created this branch and made it publicly available. The main updates are as follows:
@@ -29,6 +26,7 @@ This is a maintenance branch of `tabula-java`. Since the original project has no
 - 如有功能增强或 bug 修复，欢迎提交 PR，我们会考虑合并到主分支
 - 使用此分支时，请注意与原始项目的差异，并根据需要选择合适的版本
 
+tabula-java [![Build Status](https://travis-ci.org/tabulapdf/tabula-java.svg?branch=master)](https://travis-ci.org/tabulapdf/tabula-java)
 ===========
 
 `tabula-java` is a library for extracting tables from PDF files — it is the table extraction engine that powers [Tabula](http://tabula.technology/) ([repo](http://github.com/tabulapdf/tabula)). You can use `tabula-java` as a command-line tool to programmatically extract tables from PDFs.
