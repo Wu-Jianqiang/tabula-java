@@ -1,13 +1,21 @@
 package technology.tabula;
 
-import java.awt.Shape;
+import java.awt.*;
 import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.cli.ParseException;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -19,6 +27,10 @@ import org.apache.pdfbox.rendering.PDFRenderer;
  * @author manuel
  */
 public class Utils {
+    public static final float  EPSILON   = 0.01f;
+    private static final int   MAX_SCALE = 6;
+    protected static boolean   useQuickSort  = useCustomQuickSort();
+
     public static boolean within(double first, double second, double variance) {
         return second < first + variance && second > first - variance;
     }
@@ -30,10 +42,6 @@ public class Utils {
     public static boolean overlap(double y1, double height1, double y2, double height2) {
         return overlap(y1, height1, y2, height2, 0.1f);
     }
-
-    private static final int   MAX_SCALE = 6;
-    private static final float EPSILON   = 0.01f;
-    protected static boolean   useQuickSort  = useCustomQuickSort();
 
     public static boolean feq(double f1, double f2) {
         return (Math.abs(f1 - f2) < EPSILON);

@@ -3,7 +3,7 @@
     <!-- Original groupId: technology.tabula -->
     <groupId>io.github.wu-jianqiang</groupId>
     <artifactId>tabula</artifactId>
-    <version>1.0.5.2</version>
+    <version>1.0.5.3</version>
     <name>Tabula</name>
     <description>Extract tables from PDF files (forked from https://github.com/tabulapdf/tabula-java)</description>
     <url>https://github.com/Wu-Jianqiang/tabula-java</url>
@@ -219,6 +219,12 @@
                             <goals>
                                 <goal>sign</goal>
                             </goals>
+                            <configuration>
+                                <gpgArguments>
+                                    <arg>--pinentry-mode</arg>
+                                    <arg>loopback</arg>
+                                </gpgArguments>
+                            </configuration>
                         </execution>
                     </executions>
                 </plugin>
