@@ -2,6 +2,7 @@ package technology.tabula;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.awt.geom.Point2D;
@@ -11,12 +12,15 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import technology.tabula.extractors.SpreadsheetExtractionAlgorithm;
@@ -178,6 +182,81 @@ public class TestSpreadsheetExtractor {
         List<Rectangle> foundRectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
         Collections.sort(foundRectangles, Rectangle.ILL_DEFINED_ORDER);
         assertTrue(foundRectangles.equals(expected));
+    }
+
+    @Test
+    public void testFindSpreadsheetsFromCellsMergesNearEqualSharedVertices() {
+        // Two horizontally adjacent cells whose shared edge has a tiny floating point error
+        // 两个水平相邻的单元格，其共享边存在微小的浮点误差
+        List<Cell> cells = new ArrayList<>();
+        cells.add(new Cell(0.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(0.0f, 10.005f, 10.0f, 10.0f));
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        assertEquals(1, rectangles.size());
+        Rectangle rectangle = rectangles.get(0);
+        assertTrue(Utils.feq(0.0f, rectangle.getTop()));
+        assertTrue(Utils.feq(0.0f, rectangle.getLeft()));
+        assertTrue(Utils.feq(20.005f, rectangle.getRight()));
+        assertTrue(Utils.feq(10.0f, rectangle.getBottom()));
+    }
+
+    @Test
+    public void testFindSpreadsheetsFromCellsKeepsVerticesBeyondTolerance() {
+        // Two cells separated by more than EPSILON should not be merged
+        // 两个单元格之间的间距超过容差，不应被合并
+        List<Cell> cells = new ArrayList<>();
+        cells.add(new Cell(0.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(0.0f, 10.011f, 10.0f, 10.0f));
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        assertEquals(2, rectangles.size());
+        // Verify both rectangles keep their original bounds
+        // 验证两个矩形保持原始边界
+        Collections.sort(rectangles, (r1, r2) -> Float.compare(r1.getLeft(), r2.getLeft()));
+        Rectangle first = rectangles.get(0);
+        Rectangle second = rectangles.get(1);
+        assertTrue(Utils.feq(0.0f, first.getLeft()));
+        assertTrue(Utils.feq(10.0f, first.getRight()));
+        assertTrue(Utils.feq(0.0f, first.getTop()));
+        assertTrue(Utils.feq(10.0f, first.getBottom()));
+        assertTrue(Utils.feq(10.011f, second.getLeft()));
+        assertTrue(Utils.feq(20.011f, second.getRight()));
+        assertTrue(Utils.feq(0.0f, second.getTop()));
+        assertTrue(Utils.feq(10.0f, second.getBottom()));
+    }
+
+    @Test
+    public void testFindSpreadsheetsFromCellsWithRealWorldFloatingPointError() {
+        // Real-world cells serialized from cells.toString(); adjacent cells share vertices with tiny floating point errors
+        // 来自 cells.toString() 的真实单元格数据；相邻单元格的共享顶点存在微小的浮点误差
+        float top1 = 9.956153f;
+        float height1 = 14.758845f;
+        float top2 = 24.714998f;
+        float height2 = 27.87029f;
+
+        float[] xs = {60.878f, 203.115f, 230.275f, 257.435f, 284.595f, 311.7525f, 338.9125f, 366.0725f, 393.2325f,
+                420.3925f, 447.5525f, 474.705f, 501.865f, 529.025f, 556.185f, 583.345f, 610.50494f, 637.6625f,
+                664.82245f, 691.9825f, 719.1425f, 746.30255f, 773.4625f};
+        float[] widths = {142.237f, 27.159988f, 27.160004f, 27.160004f, 27.157501f, 27.160004f, 27.160004f, 27.160004f,
+                27.159973f, 27.160004f, 27.152496f, 27.160004f, 27.160034f, 27.159973f, 27.159973f, 27.159973f,
+                27.157532f, 27.159973f, 27.160034f, 27.160034f, 27.160034f, 27.159973f, 27.111755f};
+
+        List<Cell> cells = new ArrayList<>();
+        for (int i = 0; i < xs.length; i++) {
+            cells.add(new Cell(top1, xs[i], widths[i], height1));
+            cells.add(new Cell(top2, xs[i], widths[i], height2));
+        }
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        assertEquals(1, rectangles.size());
+        Rectangle rectangle = rectangles.get(0);
+        // Expected bounds are the serialized toString values, asserted within EPSILON tolerance
+        // 期望边界为 toString 序列化的精确值，在 EPSILON 容差内断言
+        assertTrue(Utils.feq(9.956153f, rectangle.getTop()));
+        assertTrue(Utils.feq(60.878f, rectangle.getLeft()));
+        assertTrue(Utils.feq(800.574280f, rectangle.getRight()));
+        assertTrue(Utils.feq(52.585289f, rectangle.getBottom()));
     }
 
     // TODO Add assertions
@@ -542,6 +621,171 @@ public class TestSpreadsheetExtractor {
         String result = sb.toString();
         assertEquals(expectedCsv, result);
         page.getPDDoc().close();
-    }    
+    }
+
+    @Ignore("Performance benchmark, run manually to compare O(1) exact vs Set/List feq scans")
+    @Test
+    public void testDedupPerformanceComparison() {
+        // Generate a realistic grid of cells whose shared vertices carry floating point errors
+        // 生成一个共享顶点带浮点误差的、符合实际的单元格网格
+        List<Cell> cells = generateGridCells(10, 15);
+        int iterations = 1000;
+
+        // Warm up the JIT before measuring
+        // 预热 JIT 后再计时
+        for (int i = 0; i < 100; i++) {
+            dedupByHashSetContains(cells);
+            dedupBySetFeqScan(cells);
+            dedupByListFeqForwardScan(cells);
+            dedupByListFeqReverseScan(cells);
+        }
+
+        long exactStart = System.nanoTime();
+        int exactSize = 0;
+        for (int i = 0; i < iterations; i++) {
+            exactSize = dedupByHashSetContains(cells).size();
+        }
+        long exactElapsed = System.nanoTime() - exactStart;
+
+        long setStart = System.nanoTime();
+        int setSize = 0;
+        for (int i = 0; i < iterations; i++) {
+            setSize = dedupBySetFeqScan(cells).size();
+        }
+        long setElapsed = System.nanoTime() - setStart;
+
+        long listForwardStart = System.nanoTime();
+        int listForwardSize = 0;
+        for (int i = 0; i < iterations; i++) {
+            listForwardSize = dedupByListFeqForwardScan(cells).size();
+        }
+        long listForwardElapsed = System.nanoTime() - listForwardStart;
+
+        long listReverseStart = System.nanoTime();
+        int listReverseSize = 0;
+        for (int i = 0; i < iterations; i++) {
+            listReverseSize = dedupByListFeqReverseScan(cells).size();
+        }
+        long listReverseElapsed = System.nanoTime() - listReverseStart;
+
+        // Deterministic check: the three feq-based implementations yield identical results,
+        // while the O(1) exact-match baseline diverges (the original bug)
+        // 确定性校验：三种 feq 实现结果一致，而 O(1) 精确匹配基线结果不同（即原始 bug）
+        assertEquals(setSize, listForwardSize);
+        assertEquals(setSize, listReverseSize);
+        assertNotEquals("O(1) 精确匹配在浮点误差下应与 feq 去重结果不同", exactSize, setSize);
+
+        // Performance ratios are logged only, never asserted
+        // 性能比例仅记录日志，不做断言
+        System.out.println(String.format(
+                "cells=%d, iterations=%d%n  exactO1:         total=%d ms, %.3f us/op (vertices=%d, buggy)%n  setFeqScan:      total=%d ms, %.3f us/op (vertices=%d)%n  listFeqForward:  total=%d ms, %.3f us/op (vertices=%d)%n  listFeqReverse:  total=%d ms, %.3f us/op (vertices=%d)",
+                cells.size(), iterations,
+                exactElapsed / 1_000_000, exactElapsed / 1_000.0 / iterations, exactSize,
+                setElapsed / 1_000_000, setElapsed / 1_000.0 / iterations, setSize,
+                listForwardElapsed / 1_000_000, listForwardElapsed / 1_000.0 / iterations, listForwardSize,
+                listReverseElapsed / 1_000_000, listReverseElapsed / 1_000.0 / iterations, listReverseSize));
+    }
+
+    // Generate a rows x cols grid of cells with realistic floating point errors on shared vertices
+    // 生成 rows x cols 的单元格网格，共享顶点带真实浮点误差
+    private static List<Cell> generateGridCells(int rows, int cols) {
+        List<Cell> cells = new ArrayList<>();
+        // A non-exact step makes adjacent cells' shared vertices differ by a few ulps after float rounding
+        // 非精确步长使相邻单元格的共享顶点在 float 舍入后相差几个 ulp
+        double step = 10.03;
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                cells.add(new Cell((float) (r * step), (float) (c * step), (float) step, (float) step));
+            }
+        }
+        return cells;
+    }
+
+    // Deduplicate with O(1) HashSet exact match, the original pre-fix implementation that fails under floating point error
+    // 用 O(1) 的 HashSet 精确匹配去重，即修复前在浮点误差下会出错的原始实现
+    private static Set<Point2D> dedupByHashSetContains(List<? extends Rectangle> cells) {
+        Set<Point2D> pointSet = new HashSet<>();
+        for (Rectangle cell : cells) {
+            for (Point2D pt : cell.getPoints()) {
+                if (pointSet.contains(pt)) {
+                    pointSet.remove(pt);
+                } else {
+                    pointSet.add(pt);
+                }
+            }
+        }
+        return pointSet;
+    }
+
+    // Deduplicate with a feq linear scan iterating a HashSet (fixed but unordered iteration)
+    // 用 feq 线性扫描迭代 HashSet 去重（已修复但迭代顺序无序）
+    private static Set<Point2D> dedupBySetFeqScan(List<? extends Rectangle> cells) {
+        Set<Point2D> pointSet = new HashSet<>();
+        for (Rectangle cell : cells) {
+            for (Point2D pt : cell.getPoints()) {
+                Point2D existing = null;
+                for (Point2D p : pointSet) {
+                    if (Utils.feq(p.getX(), pt.getX()) && Utils.feq(p.getY(), pt.getY())) {
+                        existing = p;
+                        break;
+                    }
+                }
+                if (existing != null) {
+                    pointSet.remove(existing);
+                } else {
+                    pointSet.add(pt);
+                }
+            }
+        }
+        return pointSet;
+    }
+
+    // Deduplicate with a feq forward scan over an ArrayList (fixed, iteration order = insertion order)
+    // 用 feq 正序扫描 ArrayList 去重（已修复，迭代顺序为插入顺序）
+    private static List<Point2D> dedupByListFeqForwardScan(List<? extends Rectangle> cells) {
+        List<Point2D> pointSet = new ArrayList<>();
+        for (Rectangle cell : cells) {
+            for (Point2D pt : cell.getPoints()) {
+                Point2D existing = null;
+                for (int i = 0; i < pointSet.size(); i++) {
+                    Point2D p = pointSet.get(i);
+                    if (Utils.feq(p.getX(), pt.getX()) && Utils.feq(p.getY(), pt.getY())) {
+                        existing = p;
+                        break;
+                    }
+                }
+                if (existing != null) {
+                    pointSet.remove(existing);
+                } else {
+                    pointSet.add(pt);
+                }
+            }
+        }
+        return pointSet;
+    }
+
+    // Deduplicate with a feq reverse scan over an ArrayList (fixed and hits the most recently added vertex first)
+    // 用 feq 倒序扫描 ArrayList 去重（已修复且最先命中最近加入的顶点）
+    private static List<Point2D> dedupByListFeqReverseScan(List<? extends Rectangle> cells) {
+        List<Point2D> pointSet = new ArrayList<>();
+        for (Rectangle cell : cells) {
+            for (Point2D pt : cell.getPoints()) {
+                Point2D existing = null;
+                for (int i = pointSet.size() - 1; i >= 0; i--) {
+                    Point2D p = pointSet.get(i);
+                    if (Utils.feq(p.getX(), pt.getX()) && Utils.feq(p.getY(), pt.getY())) {
+                        existing = p;
+                        break;
+                    }
+                }
+                if (existing != null) {
+                    pointSet.remove(existing);
+                } else {
+                    pointSet.add(pt);
+                }
+            }
+        }
+        return pointSet;
+    }
 
 }
