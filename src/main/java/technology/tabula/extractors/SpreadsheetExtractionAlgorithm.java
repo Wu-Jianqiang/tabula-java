@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import technology.tabula.Cell;
 import technology.tabula.Page;
@@ -47,6 +46,19 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
         float d2Rounded = Utils.round(d2, 2);
 
         return Float.compare(d1Rounded, d2Rounded);
+    }
+
+    // Find a point within EPSILON tolerance by scanning the accumulated points in forward order
+    // 正序遍历已累计的点，查找在 EPSILON 容差范围内的点
+    private static Point2D findPointByFeq(List<Point2D> points, Point2D target) {
+        int size = points.size();
+        for (int i = 0; i < size; i++) {
+            Point2D p = points.get(i);
+            if (Utils.feq(p.getX(), target.getX()) && Utils.feq(p.getY(), target.getY())) {
+                return p;
+            }
+        }
+        return null;
     }
     
     @Override
@@ -283,7 +295,11 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
     public static List<Rectangle> findSpreadsheetsFromCells(List<? extends Rectangle> cells) {
         // via: http://stackoverflow.com/questions/13746284/merging-multiple-adjacent-rectangles-into-one-polygon
         List<Rectangle> rectangles = new ArrayList<>();
-        Set<Point2D> pointSet = new HashSet<>();
+        // List with forward scan replaces Set: dedup is governed by feq tolerance rather than exact equals/hashCode,
+        // the ascending-index loop is JIT-friendly and measured fastest, and List avoids HashSet's nondeterministic order
+        // 用 List 正序遍历替代 Set：去重由 feq 容差控制而非精确 equals/hashCode，
+        // 升序索引循环对 JIT 友好且实测最快，同时 List 规避了 HashSet 的非确定性遍历顺序
+        List<Point2D> pointList = new ArrayList<>();
         Map<Point2D, Point2D> edgesH = new HashMap<>();
         Map<Point2D, Point2D> edgesV = new HashMap<>();
         int i = 0;
@@ -298,27 +314,32 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
         // 收集所有单元格顶点，移除共享的内部顶点，只保留边界顶点
         for (Rectangle cell: cells) {
             for(Point2D pt: cell.getPoints()) {
-                if (pointSet.contains(pt)) { // shared vertex, remove it
-                    pointSet.remove(pt);
+                Point2D existing = findPointByFeq(pointList, pt);
+                if (existing != null) { // shared vertex, remove it
+                    pointList.remove(existing);
                 }
                 else {
-                    pointSet.add(pt);
+                    pointList.add(pt);
                 }
             }
         }
         
         // X first sort
-        List<Point2D> pointsSortX = new ArrayList<>(pointSet);
+        List<Point2D> pointsSortX = new ArrayList<>(pointList);
         pointsSortX.sort(X_FIRST_POINT_COMPARATOR);
         // Y first sort
-        List<Point2D> pointsSortY = new ArrayList<>(pointSet);
+        List<Point2D> pointsSortY = new ArrayList<>(pointList);
         pointsSortY.sort(Y_FIRST_POINT_COMPARATOR);
-        
+
+        // The vertex count is fixed once dedup is done, hoist it out of the loops
+        // 顶点去重完成后数量不再变化，将 size 提取到循环外
+        int pointCount = pointList.size();
+
         // Build horizontal edge mapping: pair adjacent vertices on the same horizontal line
         // 构建水平边映射：将同一水平线上的相邻顶点配对
-        while (i < pointSet.size()) {
+        while (i < pointCount) {
             float currY = (float) pointsSortY.get(i).getY();
-            while (i < pointSet.size() && Utils.feq(pointsSortY.get(i).getY(), currY)) {
+            while (i < pointCount && Utils.feq(pointsSortY.get(i).getY(), currY)) {
                 edgesH.put(pointsSortY.get(i), pointsSortY.get(i+1));
                 edgesH.put(pointsSortY.get(i+1), pointsSortY.get(i));
                 i += 2;
@@ -328,9 +349,9 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
         i = 0;
         // Build vertical edge mapping: pair adjacent vertices on the same vertical line
         // 构建垂直边映射：将同一垂直线上的相邻顶点配对
-        while (i < pointSet.size()) {
+        while (i < pointCount) {
             float currX = (float) pointsSortX.get(i).getX();
-            while (i < pointSet.size() && Utils.feq(pointsSortX.get(i).getX(), currX)) {
+            while (i < pointCount && Utils.feq(pointsSortX.get(i).getX(), currX)) {
                 edgesV.put(pointsSortX.get(i), pointsSortX.get(i+1));
                 edgesV.put(pointsSortX.get(i+1), pointsSortX.get(i));
                 i += 2;
