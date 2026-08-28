@@ -128,6 +128,12 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
                 }
             }
 
+            // Skip isolated empty cells: a region with a single cell that has no text is noise
+            // 跳过孤立的空单元格：只有一个单元格且无文本的区域属于噪声
+            if (overlappingCells.size() == 1 && overlappingCells.get(0).getText().isEmpty()) {
+                continue;
+            }
+
             // Collect horizontal ruling lines that fall within this spreadsheet area
             // 收集落入此电子表格区域内的水平标线
             List<Ruling> horizontalOverlappingRulings = new ArrayList<>();
