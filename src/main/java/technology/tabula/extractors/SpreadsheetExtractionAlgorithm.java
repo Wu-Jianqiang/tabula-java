@@ -11,6 +11,7 @@ import java.util.Map;
 import technology.tabula.Cell;
 import technology.tabula.Page;
 import technology.tabula.Rectangle;
+import technology.tabula.RectangleSpatialIndex;
 import technology.tabula.Ruling;
 import technology.tabula.Table;
 import technology.tabula.TableWithRulingLines;
@@ -24,6 +25,11 @@ import technology.tabula.Utils;
 public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
     
     private static final float MAGIC_HEURISTIC_NUMBER = 0.65f;
+
+    // Adjacency tolerance shared by the spatial-index pre-filter and the exact edge-alignment check;
+    // the two must stay in sync, otherwise the pre-filter could miss neighbors within tolerance
+    // 相邻判定容差：空间索引预筛与精确边对齐判定共用；两者须保持一致，否则预筛会漏掉容差内的相邻单元格
+    private static final double ADJACENCY_GAP = 2 * Utils.EPSILON;
     
     private static final Comparator<Point2D> Y_FIRST_POINT_COMPARATOR = (point1, point2) -> {
         int compareY = compareRounded(point1.getY(), point2.getY());
@@ -301,24 +307,55 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
     public static List<Rectangle> findSpreadsheetsFromCells(List<? extends Rectangle> cells) {
         // via: http://stackoverflow.com/questions/13746284/merging-multiple-adjacent-rectangles-into-one-polygon
         List<Rectangle> rectangles = new ArrayList<>();
-        // List with forward scan replaces Set: dedup is governed by feq tolerance rather than exact equals/hashCode,
+        // List with forward scan replaces Set for vertex dedup: it is governed by feq tolerance rather than exact equals/hashCode,
         // the ascending-index loop is JIT-friendly and measured fastest, and List avoids HashSet's nondeterministic order
-        // 用 List 正序遍历替代 Set：去重由 feq 容差控制而非精确 equals/hashCode，
+        // 顶点去重用 List 正序遍历替代 Set：由 feq 容差控制而非精确 equals/hashCode，
         // 升序索引循环对 JIT 友好且实测最快，同时 List 规避了 HashSet 的非确定性遍历顺序
         List<Point2D> pointList = new ArrayList<>();
         Map<Point2D, Point2D> edgesH = new HashMap<>();
         Map<Point2D, Point2D> edgesV = new HashMap<>();
         int i = 0;
         
-        // Deduplicate and sort cells
-        // 去重并排序单元格
-        cells = new ArrayList<>(new HashSet<>(cells));
+        // Deduplicate with equals (exact match), then sort; the sort also keeps the
+        // connected/isolated lists below deterministic
+        // 按 equals 精确去重，再排序；排序同时保证下方 connected/isolated 列表顺序确定
+        List<Rectangle> dedupedCells = new ArrayList<>(new HashSet<>(cells));
+        Utils.sort(dedupedCells, Rectangle.ILL_DEFINED_ORDER);
 
-        Utils.sort(cells, Rectangle.ILL_DEFINED_ORDER);
+        // Build a spatial index over the cells to look up neighbors in O(log n)
+        // 为单元格构建空间索引，以便在对数时间内查找相邻单元格
+        RectangleSpatialIndex<Rectangle> index = new RectangleSpatialIndex<>();
+        for (Rectangle c : dedupedCells) {
+            index.add(c);
+        }
+
+        // Separate isolated cells (no adjacent cell in any direction); they become independent regions
+        // 分离孤立单元格（任何方向都没有相邻单元格），它们作为独立区域返回
+        List<Rectangle> isolatedCells = new ArrayList<>();
+        List<Rectangle> connectedCells = new ArrayList<>();
+        for (Rectangle c : dedupedCells) {
+            // Inflate the cell envelope by the adjacency tolerance and query neighbor candidates
+            // 将单元格包络按相邻容差膨胀，并查询相邻候选
+            Rectangle inflated = new Rectangle(
+                    (float) (c.getTop() - ADJACENCY_GAP), (float) (c.getLeft() - ADJACENCY_GAP),
+                    (float) (c.getWidth() + 2 * ADJACENCY_GAP), (float) (c.getHeight() + 2 * ADJACENCY_GAP));
+            boolean adjacent = false;
+            for (Rectangle other : index.intersects(inflated)) {
+                if (other != c && isAdjacent(c, other)) {
+                    adjacent = true;
+                    break;
+                }
+            }
+            if (adjacent) {
+                connectedCells.add(c);
+            } else {
+                isolatedCells.add(c);
+            }
+        }
 
         // Collect all cell vertices, remove shared internal vertices, keep only boundary vertices
         // 收集所有单元格顶点，移除共享的内部顶点，只保留边界顶点
-        for (Rectangle cell: cells) {
+        for (Rectangle cell: connectedCells) {
             for(Point2D pt: cell.getPoints()) {
                 Point2D existing = findPointByFeq(pointList, pt);
                 if (existing != null) { // shared vertex, remove it
@@ -423,7 +460,34 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
             rectangles.add(new Rectangle(top, left, right - left, bottom - top));
         }
         
+        // Isolated cells become independent regions; their emptiness is decided later in extract
+        // 孤立单元格作为独立区域返回；其是否为空的判定留给 extract 阶段处理
+        for (Rectangle c : isolatedCells) {
+            // copy to a plain Rectangle so the returned list never holds Cell instances,
+            // matching the return type of the polygon-area path
+            // 复制为纯 Rectangle，使返回列表不包含 Cell 子类实例，与多边形区域路径的返回类型一致
+            rectangles.add(new Rectangle(c.getTop(), c.getLeft(), (float) c.getWidth(), (float) c.getHeight()));
+        }
+        
         return rectangles;
+    }
+
+    // Two cells are adjacent if their edges meet (within tolerance) with an overlapping extent
+    // 两个单元格的边在容差范围内相接且范围重叠即为相邻
+    private static boolean isAdjacent(Rectangle a, Rectangle b) {
+        // horizontally adjacent (either side): right edge meets left edge with vertical overlap
+        // 水平相邻（左右任一方向）：右边与左边相接且垂直方向重叠
+        if ((Utils.within(a.getRight(), b.getLeft(), ADJACENCY_GAP) || Utils.within(b.getRight(), a.getLeft(), ADJACENCY_GAP))
+                && a.verticallyOverlaps(b)) {
+            return true;
+        }
+        // vertically adjacent (either side): bottom edge meets top edge with horizontal overlap
+        // 垂直相邻（上下任一方向）：下边与上边相接且水平方向重叠
+        if ((Utils.within(a.getBottom(), b.getTop(), ADJACENCY_GAP) || Utils.within(b.getBottom(), a.getTop(), ADJACENCY_GAP))
+                && a.horizontallyOverlaps(b)) {
+            return true;
+        }
+        return false;
     }
     
     @Override

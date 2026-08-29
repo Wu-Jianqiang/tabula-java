@@ -227,6 +227,61 @@ public class TestSpreadsheetExtractor {
     }
 
     @Test
+    public void testFindSpreadsheetsFromCellsReturnsIsolatedCornerCellAsIndependentRegion() {
+        // A 1x2 table plus an isolated cell protruding from its top-right corner;
+        // the isolated cell shares only a corner point, so it becomes an independent region
+        // 一个 1x2 的表格加上一个从右上角凸出的孤立单元格；
+        // 该孤立单元格只共享一个角点，因此成为独立区域
+        List<Cell> cells = new ArrayList<>();
+        cells.add(new Cell(0.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(10.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(-10.0f, 10.0f, 10.0f, 10.0f));
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        assertEquals(2, rectangles.size());
+
+        // Sort by left coordinate for deterministic assertion
+        // 按 left 坐标排序以便确定性断言
+        Collections.sort(rectangles, (r1, r2) -> Float.compare(r1.getLeft(), r2.getLeft()));
+        Rectangle table = rectangles.get(0);
+        Rectangle isolated = rectangles.get(1);
+        assertTrue(Utils.feq(0.0f, table.getTop()));
+        assertTrue(Utils.feq(0.0f, table.getLeft()));
+        assertTrue(Utils.feq(10.0f, table.getRight()));
+        assertTrue(Utils.feq(20.0f, table.getBottom()));
+        assertTrue(Utils.feq(-10.0f, isolated.getTop()));
+        assertTrue(Utils.feq(10.0f, isolated.getLeft()));
+        assertTrue(Utils.feq(20.0f, isolated.getRight()));
+        assertTrue(Utils.feq(0.0f, isolated.getBottom()));
+    }
+
+    @Test
+    public void testFindSpreadsheetsFromCellsReturnsIsolatedCornerCellBelowLeftAsIndependentRegion() {
+        // A 1x2 table plus an isolated cell protruding from its bottom-left corner;
+        // exercises the symmetric directions of isAdjacent (b on a's left / below)
+        // 一个 1x2 的表格加上一个从左下角凸出的孤立单元格；覆盖 isAdjacent 的对称方向
+        List<Cell> cells = new ArrayList<>();
+        cells.add(new Cell(0.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(10.0f, 0.0f, 10.0f, 10.0f));
+        cells.add(new Cell(20.0f, -10.0f, 10.0f, 10.0f));
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        assertEquals(2, rectangles.size());
+
+        Collections.sort(rectangles, (r1, r2) -> Float.compare(r1.getLeft(), r2.getLeft()));
+        Rectangle isolated = rectangles.get(0);
+        Rectangle table = rectangles.get(1);
+        assertTrue(Utils.feq(20.0f, isolated.getTop()));
+        assertTrue(Utils.feq(-10.0f, isolated.getLeft()));
+        assertTrue(Utils.feq(0.0f, isolated.getRight()));
+        assertTrue(Utils.feq(30.0f, isolated.getBottom()));
+        assertTrue(Utils.feq(0.0f, table.getTop()));
+        assertTrue(Utils.feq(0.0f, table.getLeft()));
+        assertTrue(Utils.feq(10.0f, table.getRight()));
+        assertTrue(Utils.feq(20.0f, table.getBottom()));
+    }
+
+    @Test
     public void testFindSpreadsheetsFromCellsWithRealWorldFloatingPointError() {
         // Real-world cells serialized from cells.toString(); adjacent cells share vertices with tiny floating point errors
         // 来自 cells.toString() 的真实单元格数据；相邻单元格的共享顶点存在微小的浮点误差
