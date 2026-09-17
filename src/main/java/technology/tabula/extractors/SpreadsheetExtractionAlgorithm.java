@@ -1,10 +1,14 @@
 package technology.tabula.extractors;
 
 import java.awt.geom.Point2D;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -120,15 +124,17 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
         // Group cells into larger spreadsheet regions
         // 将单元格分组为更大的电子表格区域
         List<Rectangle> spreadsheetAreas = findSpreadsheetsFromCells(cells);
-        
+
         List<Table> spreadsheets = new ArrayList<>();
         for (Rectangle area: spreadsheetAreas) {
 
-            // Collect all cells that intersect with this spreadsheet area and extract their text content
-            // 收集与此电子表格区域相交的所有单元格并提取其文本内容
+            // Collect cells that fully belong to this area; containment keeps outer frames
+            // (which contain the area the other way round) out of the table
+            // 收集完全属于此区域的单元格；包含语义可挡住反向包含的外框
+            Rectangle inflatedArea = inflateByAdjacencyGap(area);
             List<Cell> overlappingCells = new ArrayList<>();
             for (Cell c: cells) {
-                if (c.intersects(area)) {
+                if (inflatedArea.contains(c)) {
                     c.setTextElements(TextElement.mergeWords(page.getText(c)));
                     overlappingCells.add(c);
                 }
@@ -301,8 +307,11 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
      *
      * @param cells List of cells that may contain multiple adjacent cells
      *              单元格列表，可能包含多个相邻的单元格
-     * @return List of identified spreadsheet rectangular regions, each representing a complete table
-     *         识别出的电子表格矩形区域列表，每个矩形代表一个完整的表格
+     * @return List of identified spreadsheet rectangular regions, each representing a complete table;
+     *         outer-frame skeleton components (components whose members fully contain cells of
+     *         other components) are excluded
+     *         识别出的电子表格矩形区域列表，每个矩形代表一个完整的表格；
+     *         外框骨架分量（成员完整包含其他分量单元格的分量）会被剔除
      */
     public static List<Rectangle> findSpreadsheetsFromCells(List<? extends Rectangle> cells) {
         // via: http://stackoverflow.com/questions/13746284/merging-multiple-adjacent-rectangles-into-one-polygon
@@ -316,9 +325,9 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
         Map<Point2D, Point2D> edgesV = new HashMap<>();
         int i = 0;
         
-        // Deduplicate with equals (exact match), then sort; the sort also keeps the
-        // connected/isolated lists below deterministic
-        // 按 equals 精确去重，再排序；排序同时保证下方 connected/isolated 列表顺序确定
+        // Deduplicate (same references only: Rectangle2D.Float does not override hashCode),
+        // then sort so the lists below stay deterministic
+        // 去重（仅同对象引用：Rectangle2D.Float 未重写 hashCode），排序保证下方列表顺序确定
         List<Rectangle> dedupedCells = new ArrayList<>(new HashSet<>(cells));
         Utils.sort(dedupedCells, Rectangle.ILL_DEFINED_ORDER);
 
@@ -329,27 +338,24 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
             index.add(c);
         }
 
-        // Separate isolated cells (no adjacent cell in any direction); they become independent regions
-        // 分离孤立单元格（任何方向都没有相邻单元格），它们作为独立区域返回
+        // Partition into connected components and drop outer-frame skeleton components;
+        // same-component containment does not trigger the rule, keeping subdivided big cells
+        // 分解为连通分量并剔除外框骨架分量；同分量内的包含不触发，保留细分大单元格
+        CellPartition partition = partitionCells(dedupedCells, index);
+        boolean[] skeleton = skeletonComponents(partition);
+        // Rebuild the lists in sorted order (required by the vertex dedup below)
+        // 按排序序重建列表（下方顶点去重所需）
         List<Rectangle> isolatedCells = new ArrayList<>();
         List<Rectangle> connectedCells = new ArrayList<>();
-        for (Rectangle c : dedupedCells) {
-            // Inflate the cell envelope by the adjacency tolerance and query neighbor candidates
-            // 将单元格包络按相邻容差膨胀，并查询相邻候选
-            Rectangle inflated = new Rectangle(
-                    (float) (c.getTop() - ADJACENCY_GAP), (float) (c.getLeft() - ADJACENCY_GAP),
-                    (float) (c.getWidth() + 2 * ADJACENCY_GAP), (float) (c.getHeight() + 2 * ADJACENCY_GAP));
-            boolean adjacent = false;
-            for (Rectangle other : index.intersects(inflated)) {
-                if (other != c && isAdjacent(c, other)) {
-                    adjacent = true;
-                    break;
-                }
+        for (int cellIdx = 0; cellIdx < dedupedCells.size(); cellIdx++) {
+            int ci = partition.componentOfCell[cellIdx];
+            if (skeleton[ci]) {
+                continue;
             }
-            if (adjacent) {
-                connectedCells.add(c);
+            if (partition.componentSizes[ci] > 1) {
+                connectedCells.add(dedupedCells.get(cellIdx));
             } else {
-                isolatedCells.add(c);
+                isolatedCells.add(dedupedCells.get(cellIdx));
             }
         }
 
@@ -460,8 +466,9 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
             rectangles.add(new Rectangle(top, left, right - left, bottom - top));
         }
         
-        // Isolated cells become independent regions; their emptiness is decided later in extract
-        // 孤立单元格作为独立区域返回；其是否为空的判定留给 extract 阶段处理
+        // Isolated cells (single-member components that are not skeletons) become independent
+        // regions; their emptiness is decided later in extract
+        // 孤立单元格（非骨架的单成员分量）作为独立区域返回；其是否为空的判定留给 extract 阶段处理
         for (Rectangle c : isolatedCells) {
             // copy to a plain Rectangle so the returned list never holds Cell instances,
             // matching the return type of the polygon-area path
@@ -488,6 +495,136 @@ public class SpreadsheetExtractionAlgorithm implements ExtractionAlgorithm {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Partition result: each cell's component id, component sizes, and the cells each cell
+     * fully contains (feeds the skeleton rule). Member lists are not kept.
+     * 分解结果：分量编号、分量大小、各单元格完整包含的单元格（供骨架判定）；不保留成员列表
+     */
+    private static final class CellPartition {
+        final int[] componentOfCell;
+        final int[] componentSizes;
+        final List<List<Integer>> containedIndicesOfCell;
+
+        CellPartition(int[] componentOfCell, int[] componentSizes,
+                List<List<Integer>> containedIndicesOfCell) {
+            this.componentOfCell = componentOfCell;
+            this.componentSizes = componentSizes;
+            this.containedIndicesOfCell = containedIndicesOfCell;
+        }
+    }
+
+    // A copy of r grown by the adjacency tolerance on every side, so that edge-touching
+    // neighbors fall inside the envelope
+    // 将 r 向四周按相邻容差放大的副本，使边相接的邻居落入包络内
+    private static Rectangle inflateByAdjacencyGap(Rectangle r) {
+        return new Rectangle(
+                (float) (r.getTop() - ADJACENCY_GAP), (float) (r.getLeft() - ADJACENCY_GAP),
+                (float) (r.getWidth() + 2 * ADJACENCY_GAP), (float) (r.getHeight() + 2 * ADJACENCY_GAP));
+    }
+
+    /**
+     * Partition cells into connected components (edge contact within tolerance) via a flood
+     * fill over the spatial index; the single inflated-envelope query per cell feeds both
+     * the adjacency and the containment sweeps.
+     * 通过空间索引上的泛洪填充，将单元格按边相接关系（容差内）分解为连通分量；
+     * 每个单元格的一次膨胀包络查询同时服务相邻判定与包含判定
+     *
+     * @param cells deduplicated, deterministically sorted cells
+     *              去重且确定性排序后的单元格
+     * @param index spatial index built over the same cells
+     *              基于同一批单元格构建的空间索引
+     */
+    private static CellPartition partitionCells(List<Rectangle> cells, RectangleSpatialIndex<Rectangle> index) {
+        int n = cells.size();
+        // Identity semantics on purpose: Rectangle2D.equals is value-based but hashCode is
+        // not overridden, so value-based hashing would violate the equals contract
+        // 刻意用引用语义：Rectangle2D.equals 是值语义但未重写 hashCode，值语义哈希违反 equals 契约
+        Map<Rectangle, Integer> indexOf = new IdentityHashMap<>();
+        for (int i = 0; i < n; i++) {
+            indexOf.put(cells.get(i), i);
+        }
+
+        int[] componentOfCell = new int[n];
+        Arrays.fill(componentOfCell, -1);
+        List<Integer> componentSizes = new ArrayList<>();
+        List<List<Integer>> containedIndicesOfCell = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            containedIndicesOfCell.add(null);
+        }
+
+        // Seeding over the sorted cells keeps component ids deterministic
+        // 以排序后的单元格为种子遍历，保证分量编号确定
+        for (int seed = 0; seed < n; seed++) {
+            if (componentOfCell[seed] != -1) {
+                continue;
+            }
+            int componentId = componentSizes.size();
+            componentSizes.add(0);
+            Deque<Integer> pending = new ArrayDeque<>();
+            componentOfCell[seed] = componentId;
+            pending.push(seed);
+            while (!pending.isEmpty()) {
+                int cur = pending.pop();
+                componentSizes.set(componentId, componentSizes.get(componentId) + 1);
+                Rectangle c = cells.get(cur);
+                Rectangle inflated = inflateByAdjacencyGap(c);
+                for (Rectangle other : index.intersects(inflated)) {
+                    if (other == c) {
+                        continue;
+                    }
+                    int j = indexOf.get(other);
+                    // Adjacency is only evaluated for undiscovered candidates: cells already in
+                    // a component are provably non-adjacent to the current one
+                    // 仅对未发现的候选做相邻判定：已有分量归属的单元格必不与当前分量相邻
+                    if (componentOfCell[j] == -1 && isAdjacent(c, other)) {
+                        componentOfCell[j] = componentId;
+                        pending.push(j);
+                    }
+                    if (c.contains(other)) {
+                        if (containedIndicesOfCell.get(cur) == null) {
+                            containedIndicesOfCell.set(cur, new ArrayList<>());
+                        }
+                        containedIndicesOfCell.get(cur).add(j);
+                    }
+                }
+            }
+        }
+        return new CellPartition(componentOfCell, toIntArray(componentSizes), containedIndicesOfCell);
+    }
+
+    private static int[] toIntArray(List<Integer> sizes) {
+        int[] rv = new int[sizes.size()];
+        for (int i = 0; i < rv.length; i++) {
+            rv[i] = sizes.get(i);
+        }
+        return rv;
+    }
+
+    /**
+     * Mark skeleton components: a component whose member fully contains a cell of ANOTHER
+     * component (e.g. a page border wrapping the real table). Same-component containment
+     * does not trigger this, keeping subdivided big cells; a lone border cell is just the
+     * single-member case of the same rule.
+     * 标记骨架分量：成员完整包含另一分量单元格的分量（如罩住真实表格的页面边框）。
+     * 同分量内的包含不触发，保留细分大单元格；孤立外框只是同一规则的单成员特例
+     */
+    private static boolean[] skeletonComponents(CellPartition partition) {
+        boolean[] skeleton = new boolean[partition.componentSizes.length];
+        for (int i = 0; i < partition.componentOfCell.length; i++) {
+            List<Integer> contained = partition.containedIndicesOfCell.get(i);
+            if (contained == null) {
+                continue;
+            }
+            for (int j : contained) {
+                if (partition.componentOfCell[j] != partition.componentOfCell[i]) {
+                    skeleton[partition.componentOfCell[i]] = true;
+                    break;
+                }
+            }
+        }
+        return skeleton;
     }
     
     @Override
