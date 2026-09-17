@@ -20,6 +20,11 @@ import java.util.Set;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -314,6 +319,119 @@ public class TestSpreadsheetExtractor {
         assertTrue(Utils.feq(52.585289f, rectangle.getBottom()));
     }
 
+    @Test
+    public void testFindSpreadsheetsFromCellsExcludesOuterFrame() {
+        // A real table (from a production PDF's cells.toString()) wrapped in a touching-nothing outer frame
+        // 真实表格（来自生产 PDF 的 cells.toString()）外套一个四边不接触的外边框
+        List<Cell> cells = new ArrayList<>();
+        // outer frame: contains the whole inner table, no edge contact
+        // 外边框：包含整个内部表格，四边无接触
+        cells.add(new Cell(78.549995f, 77.0f, 683.75f, 451.2f));
+
+        // row 1 (4 cells)
+        cells.add(new Cell(190.88573f, 125.1875f, 80.662506f, 27.364273f));
+        cells.add(new Cell(190.88573f, 205.85f, 219.69998f, 27.364273f));
+        cells.add(new Cell(190.88573f, 425.55f, 70.850006f, 27.364273f));
+        cells.add(new Cell(190.88573f, 496.4f, 219.56253f, 27.364273f));
+
+        // rows 2 and 3 (6 cells each, identical column layout)
+        float[] row23Lefts = {125.1875f, 227.1f, 326.3f, 425.55f, 553.1f, 631.1f};
+        float[] row23Widths = {101.912506f, 99.19998f, 99.25f, 127.54999f, 78.0f, 84.86255f};
+        for (int i = 0; i < row23Lefts.length; i++) {
+            cells.add(new Cell(218.25f, row23Lefts[i], row23Widths[i], 28.299988f));
+            cells.add(new Cell(246.54999f, row23Lefts[i], row23Widths[i], 147.41666f));
+        }
+
+        // row 4 (3 cells)
+        cells.add(new Cell(393.96664f, 125.1875f, 55.8125f, 28.43335f));
+        cells.add(new Cell(393.96664f, 181.0f, 450.09998f, 28.43335f));
+        cells.add(new Cell(393.96664f, 631.1f, 84.86255f, 28.43335f));
+
+        // row 5 (3 cells)
+        cells.add(new Cell(422.4f, 125.1875f, 173.025f, 79.399994f));
+        cells.add(new Cell(422.4f, 298.2125f, 127.337494f, 79.399994f));
+        cells.add(new Cell(422.4f, 425.55f, 290.41254f, 79.399994f));
+
+        List<Rectangle> rectangles = SpreadsheetExtractionAlgorithm.findSpreadsheetsFromCells(cells);
+        // Only the inner table is returned, as its own bounding box rather than the frame's
+        // 只返回内部表格的外接矩形，而非外框的
+        assertEquals(1, rectangles.size());
+        Rectangle table = rectangles.get(0);
+        assertTrue(Utils.feq(190.88573f, table.getTop()));
+        assertTrue(Utils.feq(125.1875f, table.getLeft()));
+        assertTrue(Utils.feq(715.962524f, table.getRight()));
+        assertTrue(Utils.feq(501.799988f, table.getBottom()));
+    }
+
+    @Test
+    public void testExtractExcludesOuterFrameCellFromInnerTable() throws IOException {
+        // End-to-end: a vector PDF with an outer frame around a 2x2 grid; the frame must neither
+        // become a region nor leak into the inner table's cells
+        // 端到端：矢量 PDF 中外框包住 2x2 网格；外框既不自成区域也不混入内部表格
+        PDDocument document = new PDDocument();
+        try {
+            // letter's 612pt width would clip the frame's real-world coordinates
+            // letter 的 612pt 宽会裁掉真实案例坐标
+            PDPage page = new PDPage(new PDRectangle(800f, 620f));
+            document.addPage(page);
+            float pageHeight = page.getMediaBox().getHeight();
+
+            PDPageContentStream cs = new PDPageContentStream(document, page);
+            // outer frame (real-world coordinates)
+            // 外框（真实案例坐标）
+            drawLine(cs, 77.0f, pageHeight - 78.55f, 760.75f, pageHeight - 78.55f);
+            drawLine(cs, 77.0f, pageHeight - 529.75f, 760.75f, pageHeight - 529.75f);
+            drawLine(cs, 77.0f, pageHeight - 78.55f, 77.0f, pageHeight - 529.75f);
+            drawLine(cs, 760.75f, pageHeight - 78.55f, 760.75f, pageHeight - 529.75f);
+            // inner 2x2 grid
+            // 内部 2x2 网格
+            float[] xs = {125.19f, 420.0f, 715.96f};
+            float[] ys = {190.88f, 340.0f, 501.8f};
+            for (float x : xs) {
+                drawLine(cs, x, pageHeight - ys[0], x, pageHeight - ys[2]);
+            }
+            for (float y : ys) {
+                drawLine(cs, xs[0], pageHeight - y, xs[2], pageHeight - y);
+            }
+            // one character per cell: a textless page makes snapPoints collapse all rulings
+            // 每格放一个字符：无文字页面会使 snapPoints 把所有标线塌缩
+            drawText(cs, 140.0f, pageHeight - 210.0f, "A");
+            drawText(cs, 440.0f, pageHeight - 210.0f, "B");
+            drawText(cs, 140.0f, pageHeight - 360.0f, "C");
+            drawText(cs, 440.0f, pageHeight - 360.0f, "D");
+            cs.close();
+
+            Page extracted = new ObjectExtractor(document).extract().next();
+            List<Table> tables = new SpreadsheetExtractionAlgorithm().extract(extracted);
+
+            // only the inner 2x2 table is returned, with texts in the right slots
+            // 只返回内部 2x2 表格，文本落在正确的格子
+            assertEquals(1, tables.size());
+            assertEquals(2, tables.get(0).getRowCount());
+            assertEquals(2, tables.get(0).getColCount());
+            assertEquals("A", tables.get(0).getRows().get(0).get(0).getText());
+            assertEquals("B", tables.get(0).getRows().get(0).get(1).getText());
+            assertEquals("C", tables.get(0).getRows().get(1).get(0).getText());
+            assertEquals("D", tables.get(0).getRows().get(1).get(1).getText());
+        } finally {
+            document.close();
+        }
+    }
+
+    private static void drawLine(PDPageContentStream cs, float x1, float y1, float x2, float y2) throws IOException {
+        cs.moveTo(x1, y1);
+        cs.lineTo(x2, y2);
+        cs.stroke();
+    }
+
+    private static void drawText(PDPageContentStream cs, float x, float y, String text) throws IOException {
+        cs.beginText();
+        cs.setFont(PDType1Font.HELVETICA, 12);
+        cs.newLineAtOffset(x, y);
+        cs.showText(text);
+        cs.endText();
+    }
+
     // TODO Add assertions
     @Test
     public void testSpreadsheetExtraction() throws IOException {
@@ -585,19 +703,21 @@ public class TestSpreadsheetExtractor {
                 1);
         SpreadsheetExtractionAlgorithm sea = new SpreadsheetExtractionAlgorithm();
         List<Table> tables = sea.extract(page);
-        // assertEquals(1, tables.size());
+        // the page border + header band form a skeleton component and get excluded
+        // 页面边框 + 页眉条构成骨架分量，被剔除
+        assertEquals(1, tables.size());
         Table table = tables.get(0);
 
 
-        assertEquals("اسمي سلطان", table.getRows().get(1).get(1).getText());
-        assertEquals("من اين انت؟", table.getRows().get(2).get(1).getText());
-        assertEquals("1234", table.getRows().get(3).get(0).getText());
-        assertEquals("هل انت شباك؟", table.getRows().get(4).get(0).getText());
-        assertEquals("انا من ولاية كارولينا الشمال", table.getRows().get(2).get(0).getText()); // conjoined lam-alif gets missed
-        assertEquals("اسمي Jeremy في الانجليزية", table.getRows().get(4).get(1).getText()); // conjoined lam-alif gets missed
-        assertEquals("عندي 47 قطط", table.getRows().get(3).get(1).getText()); // the real right answer is 47.
-        assertEquals("Jeremy is جرمي in Arabic", table.getRows().get(5).get(0).getText()); // the real right answer is 47.
-        assertEquals("مرحباً", table.getRows().get(1).get(0).getText()); // really ought to be ً, but this is forgiveable for now
+        assertEquals("اسمي سلطان", table.getRows().get(0).get(1).getText());
+        assertEquals("من اين انت؟", table.getRows().get(1).get(1).getText());
+        assertEquals("1234", table.getRows().get(2).get(0).getText());
+        assertEquals("هل انت شباك؟", table.getRows().get(3).get(0).getText());
+        assertEquals("انا من ولاية كارولينا الشمال", table.getRows().get(1).get(0).getText()); // conjoined lam-alif gets missed
+        assertEquals("اسمي Jeremy في الانجليزية", table.getRows().get(3).get(1).getText()); // conjoined lam-alif gets missed
+        assertEquals("عندي 47 قطط", table.getRows().get(2).get(1).getText()); // the real right answer is 47.
+        assertEquals("Jeremy is جرمي in Arabic", table.getRows().get(4).get(0).getText()); // the real right answer is 47.
+        assertEquals("مرحباً", table.getRows().get(0).get(0).getText()); // really ought to be ً, but this is forgiveable for now
 
         // there is one remaining problems that are not yet addressed
         // - diacritics (e.g. Arabic's tanwinً and probably Hebrew nekudot) are put in the wrong place.
