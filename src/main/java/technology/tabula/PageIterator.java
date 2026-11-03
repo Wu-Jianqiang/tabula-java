@@ -1,6 +1,7 @@
 package technology.tabula;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Iterator;
 
 public class PageIterator implements Iterator<Page> {
@@ -20,18 +21,23 @@ public class PageIterator implements Iterator<Page> {
         return pageIndexIterator.hasNext();
     }
 
+    /**
+     * Extracts the next page; an {@link IOException} is wrapped in
+     * {@link UncheckedIOException}.
+     * <p>
+     * 提取下一页：{@link IOException} 包装为 {@link UncheckedIOException} 抛出。
+     */
     @Override
     public Page next() {
-        Page nextPage = null;
         if (!this.hasNext()) {
             throw new IllegalStateException();
         }
+        int pageNumber = pageIndexIterator.next();
         try {
-            nextPage = objectExtractor.extractPage(pageIndexIterator.next());
+            return objectExtractor.extractPage(pageNumber);
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException("Failed to extract PDF page " + pageNumber, e);
         }
-        return nextPage;
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //

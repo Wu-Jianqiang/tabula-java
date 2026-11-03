@@ -2,9 +2,10 @@ package technology.tabula;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,7 +30,7 @@ import technology.tabula.writers.Writer;
 
 public class CommandLineApp {
 
-    private static String VERSION = "1.0.5.7";
+    private static String VERSION = "1.0.5.8";
     private static String VERSION_STRING = String.format("tabula %s (c) 2012-2020 Manuel Aristarán", VERSION);
     private static String BANNER = "\nTabula helps you extract tables from PDFs\n\n";
 
@@ -181,6 +182,12 @@ public class CommandLineApp {
                 }
             }
             writeTables(tables, outFile);
+        } catch (UncheckedIOException e) {
+            // Corrupt page signal from PageIterator.next(): combine both layers to keep the page number visible
+            // PageIterator.next() 传出的坏页信号：组合两层消息，保留页码定位
+            throw new ParseException(e.getCause() != null
+                    ? e.getMessage() + ": " + e.getCause().getMessage()
+                    : e.getMessage());
         } catch (IOException e) {
             throw new ParseException(e.getMessage());
         } finally {
