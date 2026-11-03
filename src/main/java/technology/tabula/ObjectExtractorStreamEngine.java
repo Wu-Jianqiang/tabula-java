@@ -7,11 +7,14 @@ import java.awt.geom.Line2D;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -29,11 +32,17 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
     private Logger logger;
     private int clipWindingRule = -1;
     private GeneralPath currentPath = new GeneralPath();
+    private final OperatorExceptionHandler handler;
 
     private static final float RULING_MINIMUM_LENGTH = 0.01f;
 
     protected ObjectExtractorStreamEngine(PDPage page) {
+        this(page, null);
+    }
+
+    protected ObjectExtractorStreamEngine(PDPage page, OperatorExceptionHandler handler) {
         super(page);
+        this.handler = handler;
         logger = LoggerFactory.getLogger(ObjectExtractorStreamEngine.class);
         rulings = new ArrayList<>();
 
@@ -207,7 +216,6 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
      * ⚠️Note: In practice (e.g., unit tests), there exist tables that are filled without stroking operations,
      * so both operations need to be considered together by default.
      * ⚠️注意：事实（如单元测试）存在只填充无描边动作的表格存在，因此默认两者都需要一起统计。
-     * </p>
      *
      * @param isStroke Whether this is a stroke operation
      *                 是否为描边操作
@@ -310,6 +318,20 @@ class ObjectExtractorStreamEngine extends PDFGraphicsStreamEngine {
                 return -1;
             return 0;
         }
+    }
+
+    /**
+     * Delegates to the injected handler first (if any); falls back to the default PDFBox
+     * behaviour when no handler is injected or the handler returns {@code true}.
+     * <p>
+     * 注入回调时先交回调决定；未注入或回调返回 {@code true} 时走 PDFBox 默认行为。
+     */
+    @Override
+    protected void operatorException(Operator operator, List<COSBase> operands, IOException e) throws IOException {
+        if (handler != null && !handler.handle(operator, operands, e)) {
+            return;
+        }
+        super.operatorException(operator, operands, e);
     }
 
 }

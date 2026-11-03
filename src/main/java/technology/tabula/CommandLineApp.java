@@ -2,9 +2,10 @@ package technology.tabula;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -187,6 +188,12 @@ public class CommandLineApp {
                 }
             }
             writeTables(tables, outFile);
+        } catch (UncheckedIOException e) {
+            // Corrupt page signal from PageIterator.next(): combine both layers to keep the page number visible
+            // PageIterator.next() 传出的坏页信号：组合两层消息，保留页码定位
+            throw new ParseException(e.getCause() != null
+                    ? e.getMessage() + ": " + e.getCause().getMessage()
+                    : e.getMessage());
         } catch (IOException e) {
             throw new ParseException(e.getMessage());
         } finally {

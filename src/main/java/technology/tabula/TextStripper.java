@@ -1,6 +1,8 @@
 package technology.tabula;
 
 import org.apache.fontbox.util.BoundingBox;
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
@@ -21,14 +23,20 @@ public class TextStripper extends PDFTextStripper {
     private final PDDocument document;
     private final ArrayList<TextElement> textElements;
     private final RectangleSpatialIndex<TextElement> spatialIndex;
+    private final OperatorExceptionHandler handler;
     private float minCharWidth = Float.MAX_VALUE;
     private float minCharHeight = Float.MAX_VALUE;
     private float totalHeight = 0.0f;
     private int countHeight = 0;
 
     public TextStripper(PDDocument document, int pageNumber) throws IOException {
+        this(document, pageNumber, null);
+    }
+
+    public TextStripper(PDDocument document, int pageNumber, OperatorExceptionHandler handler) throws IOException {
         super();
         this.document = document;
+        this.handler = handler;
         this.setStartPage(pageNumber);
         this.setEndPage(pageNumber);
         this.textElements = new ArrayList<>();
@@ -37,6 +45,20 @@ public class TextStripper extends PDFTextStripper {
 
     public void process() throws IOException {
         this.getText(this.document);
+    }
+
+    /**
+     * Delegates to the injected handler first (if any); falls back to the default PDFBox
+     * behaviour when no handler is injected or the handler returns {@code true}.
+     * <p>
+     * 注入回调时先交回调决定；未注入或回调返回 {@code true} 时走 PDFBox 默认行为。
+     */
+    @Override
+    protected void operatorException(Operator operator, List<COSBase> operands, IOException e) throws IOException {
+        if (handler != null && !handler.handle(operator, operands, e)) {
+            return;
+        }
+        super.operatorException(operator, operands, e);
     }
 
     @Override

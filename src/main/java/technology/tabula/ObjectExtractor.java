@@ -8,9 +8,27 @@ import org.apache.pdfbox.pdmodel.PDPage;
 public class ObjectExtractor implements java.io.Closeable {
 
     private final PDDocument pdfDocument;
+    private final OperatorExceptionHandler handler;
 
     public ObjectExtractor(PDDocument pdfDocument) {
+        this(pdfDocument, null);
+    }
+
+    /**
+     * Creates an extractor with an {@link OperatorExceptionHandler} to take control of
+     * operator exceptions (e.g. {@code MissingOperandException} from a corrupt content
+     * stream). The handler is applied to both the stream engine and the text stripper.
+     * <p>
+     * 创建提取器并注入 {@link OperatorExceptionHandler}，接管操作符异常处理
+     * （如内容流损坏导致的 {@code MissingOperandException}）。回调对提取引擎
+     * （ObjectExtractorStreamEngine）与文本提取器（TextStripper）均生效。
+     *
+     * @param pdfDocument the PDF document to extract from
+     * @param handler the operator exception handler, or {@code null} to keep the default behaviour
+     */
+    public ObjectExtractor(PDDocument pdfDocument, OperatorExceptionHandler handler) {
         this.pdfDocument = pdfDocument;
+        this.handler = handler;
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
@@ -20,10 +38,10 @@ public class ObjectExtractor implements java.io.Closeable {
         }
         PDPage page = pdfDocument.getPage(pageNumber - 1);
 
-        ObjectExtractorStreamEngine streamEngine = new ObjectExtractorStreamEngine(page);
+        ObjectExtractorStreamEngine streamEngine = new ObjectExtractorStreamEngine(page, handler);
         streamEngine.processPage(page);
 
-        TextStripper textStripper = new TextStripper(pdfDocument, pageNumber);
+        TextStripper textStripper = new TextStripper(pdfDocument, pageNumber, handler);
         textStripper.process();
 
         Utils.sort(textStripper.getTextElements(), Rectangle.ILL_DEFINED_ORDER);
