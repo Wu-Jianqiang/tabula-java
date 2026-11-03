@@ -8,6 +8,7 @@ This is a maintenance branch of `tabula-java`. Since the original project has no
 4. Enhanced debug image generation functionality with zoom scale, defaulting to 4x magnification, significantly improving the clarity and accuracy of visualized debug output.
 5. Fixed floating-point precision bugs in spreadsheet area detection: (a) vertex deduplication now uses tolerance-based comparison (`Utils.feq`) instead of exact equality, so shared vertices with tiny floating-point errors are correctly merged; (b) an isolated cell touching the table body only at a corner point no longer merges into the region polygon (which previously stretched the bounding box into an L-shaped "corner notch") — isolated cells are returned as independent regions, empty single-cell regions are filtered out at extraction time, and neighbor lookup is accelerated by an R-tree spatial index.
 6. Fixed outer-frame extraction: a border (with or without a header band) wrapping a table no longer becomes a bogus whole-page table nor leaks into the inner table's cells — cells are partitioned into connected components and wrapping skeleton components are excluded.
+7. Added an `OperatorExceptionHandler` callback: inject it via the new `ObjectExtractor` constructor to take control of PDFBox operator exceptions (e.g. `MissingOperandException` caused by a corrupt content stream) — return `true` to continue with the default PDFBox behaviour, `false` to fully handle it, or throw to abort. Related hardening: `PageIterator.next()` no longer swallows `IOException` and returns `null` on a corrupt page — it now throws `UncheckedIOException` [BREAKING CHANGE], and the CLI reports the failing page number. Dependencies upgraded (PDFBox 2.0.37, BouncyCastle jdk18on 1.86, commons-cli 1.11.0, etc.).
 
 **Important Statement:**
 - This branch is developed based on the original `tabula-java` project and follows the same MIT license
@@ -25,6 +26,7 @@ This is a maintenance branch of `tabula-java`. Since the original project has no
 4. 调试图像生成功能增加缩放比例，默认放大 4 倍，显著提高了可视化调试输出的清晰度和准确性。
 5. 修复电子表格区域检测的浮点精度 bug：①顶点去重由精确相等改为基于容差（`Utils.feq`）的比较，使存在微小浮点误差的共享顶点能被正确合并；②仅以角点接触表格主体的孤立单元格不再并入区域多边形（此前会把外接矩形拉大成带"犄角旮旯"的阶梯形）——孤立单元格改为独立成区域返回，空内容的单格区域在提取阶段被过滤，相邻单元格查找使用 R-tree 空间索引加速。
 6. 修复外边框提取问题：包裹表格的外框（含带页眉条的情形）不再自成覆盖整页的噪声表格，也不再混入内部表格——单元格按连通分量分解，罩住其他分量的骨架分量被整体剔除。
+7. 新增 `OperatorExceptionHandler` 回调：通过 `ObjectExtractor` 新增的构造器注入，接管 PDFBox 操作符异常（如内容流损坏导致的 `MissingOperandException`）——返回 `true` 继续 PDFBox 默认行为、`false` 完全接管、抛出异常中止。同步加固：`PageIterator.next()` 遇损坏页不再吞掉 `IOException` 返回 `null`，改为抛出 `UncheckedIOException`【破坏性变更】，命令行报错会带出错页码。依赖升级（PDFBox 2.0.37、BouncyCastle jdk18on 1.86、commons-cli 1.11.0 等）。
 
 **重要声明：**
 - 此分支基于原始 `tabula-java` 项目进行开发，遵循相同的 MIT 许可证
