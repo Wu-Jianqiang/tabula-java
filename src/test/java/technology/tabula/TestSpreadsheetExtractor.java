@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -426,7 +427,7 @@ public class TestSpreadsheetExtractor {
 
     private static void drawText(PDPageContentStream cs, float x, float y, String text) throws IOException {
         cs.beginText();
-        cs.setFont(PDType1Font.HELVETICA, 12);
+        cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
         cs.newLineAtOffset(x, y);
         cs.showText(text);
         cs.endText();
